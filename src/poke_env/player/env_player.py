@@ -8,12 +8,13 @@ from gym.core import Env  # pyre-ignore
 from queue import Queue
 from threading import Thread
 
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 from poke_env.environment.battle import Battle
 from poke_env.player.player import Player
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.server_configuration import ServerConfiguration
+from poke_env.teambuilder.teambuilder import Teambuilder
 from poke_env.utils import to_id_str
 
 import asyncio
@@ -30,28 +31,37 @@ class EnvPlayer(Player, Env, ABC):  # pyre-ignore
 
     def __init__(
         self,
-        player_configuration: PlayerConfiguration,
+        player_configuration: Optional[PlayerConfiguration] = None,
         *,
         avatar: Optional[int] = None,
-        battle_format: str,
+        battle_format: str = "gen8randombattle",
         log_level: Optional[int] = None,
-        server_configuration: ServerConfiguration,
+        server_configuration: Optional[ServerConfiguration] = None,
         start_listening: bool = True,
+        team: Optional[Union[str, Teambuilder]] = None,
     ):
         """
-        :param player_configuration: Player configuration.
-        :type player_configuration: PlayerConfiguration
+        :param player_configuration: Player configuration. If empty, defaults to an
+            automatically generated username with no password. This option must be set
+            if the server configuration requires authentication.
+        :type player_configuration: PlayerConfiguration, optional
         :param avatar: Player avatar id. Optional.
         :type avatar: int, optional
-        :param battle_format: Name of the battle format this player plays.
+        :param battle_format: Name of the battle format this player plays. Defaults to
+            gen8randombattle.
         :type battle_format: str
         :param log_level: The player's logger level.
         :type log_level: int. Defaults to logging's default level.
-        :param server_configuration: Server configuration.
-        :type server_configuration: ServerConfiguration
+        :param server_configuration: Server configuration. Defaults to Localhost Server
+            Configuration.
+        :type server_configuration: ServerConfiguration, optional
         :param start_listening: Wheter to start listening to the server. Defaults to
             True.
         :type start_listening: bool
+        :param team: The team to use for formats requiring a team. Can be a showdown
+            team string, a showdown packed team string, of a ShowdownTeam object.
+            Defaults to None.
+        :type team: str or Teambuilder, optional
         """
         super(EnvPlayer, self).__init__(
             player_configuration=player_configuration,
@@ -61,6 +71,7 @@ class EnvPlayer(Player, Env, ABC):  # pyre-ignore
             max_concurrent_battles=1,
             server_configuration=server_configuration,
             start_listening=start_listening,
+            team=team,
         )
         self._actions = {}
         self._current_battle: Battle
@@ -158,8 +169,9 @@ class EnvPlayer(Player, Env, ABC):  # pyre-ignore
                 self._current_battle.active_pokemon.current_hp or 0,
                 self._current_battle.active_pokemon.max_hp or 0,
                 self._current_battle.active_pokemon.species,
-                self._current_battle.opponent_active_pokemon.species,
-                self._current_battle.opponent_active_pokemon.current_hp or 0,
+                self._current_battle.opponent_active_pokemon.species,  # pyre-ignore
+                self._current_battle.opponent_active_pokemon.current_hp  # pyre-ignore
+                or 0,
                 "".join(
                     [
                         "⦻" if mon.fainted else "●"
@@ -346,7 +358,7 @@ class EnvPlayer(Player, Env, ABC):  # pyre-ignore
         pass
 
 
-class Gen7EnvSinglePlayer(EnvPlayer):
+class Gen7EnvSinglePlayer(EnvPlayer):  # pyre-ignore
     _ACTION_SPACE = list(range(3 * 4 + 6))
 
     def _action_to_move(self, action: int, battle: Battle) -> str:
@@ -419,6 +431,7 @@ class Gen7EnvSinglePlayer(EnvPlayer):
         """
         return self._ACTION_SPACE
 
+<<<<<<< HEAD
     def legal_action_mask(self, battle : Battle) -> List:
         legal_actions = [0] * 18
         if not battle.force_switch:
@@ -433,3 +446,93 @@ class Gen7EnvSinglePlayer(EnvPlayer):
         for i in range(12, 12 + len(battle.available_switches)):
             legal_actions[i] += 1
         return legal_actions
+=======
+
+class Gen8EnvSinglePlayer(EnvPlayer):  # pyre-ignore
+    _ACTION_SPACE = list(range(4 * 4 + 6))
+
+    def _action_to_move(self, action: int, battle: Battle) -> str:
+        """Converts actions to move orders.
+
+        The conversion is done as follows:
+
+        0 <= action < 4:
+            The actionth available move in battle.available_moves is executed.
+        4 <= action < 8:
+            The action - 4th available move in battle.available_moves is executed, with
+            z-move.
+        8 <= action < 12:
+            The action - 8th available move in battle.available_moves is executed, with
+            mega-evolution.
+        8 <= action < 12:
+            The action - 8th available move in battle.available_moves is executed, with
+            mega-evolution.
+        12 <= action < 16:
+            The action - 12th available move in battle.available_moves is executed,
+            while dynamaxing.
+        16 <= action < 22
+            The action - 16th available switch in battle.available_switches is executed.
+
+        If the proposed action is illegal, a random legal move is performed.
+
+        :param action: The action to convert.
+        :type action: int
+        :param battle: The battle in which to act.
+        :type battle: Battle
+        :return: the order to send to the server.
+        :rtype: str
+        """
+        if (
+            action < 4
+            and action < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action])
+        elif (
+            not battle.force_switch
+            and battle.can_z_move
+            and 0 <= action - 4 < len(battle.active_pokemon.available_z_moves)
+        ):
+            return self.create_order(
+                battle.active_pokemon.available_z_moves[action - 4], z_move=True
+            )
+        elif (
+            battle.can_mega_evolve
+            and 0 <= action - 8 < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action - 8], mega=True)
+        elif (
+            battle.can_dynamax
+            and 0 <= action - 12 < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action - 12], dynamax=True)
+        elif 0 <= action - 16 < len(battle.available_switches):
+            return self.create_order(battle.available_switches[action - 16])
+        else:
+            return self.choose_random_move(battle)
+
+    @property
+    def action_space(self) -> List:
+        """The action space for gen 7 single battles.
+
+        The conversion to moves is done as follows:
+
+            0 <= action < 4:
+                The actionth available move in battle.available_moves is executed.
+            4 <= action < 8:
+                The action - 4th available move in battle.available_moves is executed,
+                with z-move.
+            8 <= action < 12:
+                The action - 8th available move in battle.available_moves is executed,
+                with mega-evolution.
+            12 <= action < 16:
+                The action - 12th available move in battle.available_moves is executed,
+                while dynamaxing.
+            16 <= action < 22
+                The action - 16th available switch in battle.available_switches is
+                executed.
+        """
+        return self._ACTION_SPACE
+>>>>>>> 5435b1b1a3da314fc46aebdf21287f94abc916df

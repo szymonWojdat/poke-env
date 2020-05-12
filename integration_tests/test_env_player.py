@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+import pytest
 
 from poke_env.player.env_player import Gen7EnvSinglePlayer
 from poke_env.player.random_player import RandomPlayer
@@ -20,15 +21,36 @@ def play_function(player, n_battles):
             _, _, done, _ = player.step(np.random.choice(player.action_space))
 
 
-def test_random_gym_player():
+@pytest.mark.timeout(60)
+def test_random_gym_player_gen7():
     env_player = RandomEnvPlayer(
-        player_configuration=PlayerConfiguration("EnvPlayer", None),
+        player_configuration=PlayerConfiguration("EnvPlayerGen7", None),
         battle_format="gen7randombattle",
         server_configuration=LocalhostServerConfiguration,
     )
     random_player = RandomPlayer(
-        player_configuration=PlayerConfiguration("RandomPlayer", None),
+        player_configuration=PlayerConfiguration("RandomPlayerGen7", None),
         battle_format="gen7randombattle",
+        server_configuration=LocalhostServerConfiguration,
+    )
+
+    env_player.play_against(
+        env_algorithm=play_function,
+        opponent=random_player,
+        env_algorithm_kwargs={"n_battles": 10},
+    )
+
+
+@pytest.mark.timeout(60)
+def test_random_gym_player_gen8():
+    env_player = RandomEnvPlayer(
+        player_configuration=PlayerConfiguration("EnvPlayerGen8", None),
+        battle_format="gen8randombattle",
+        server_configuration=LocalhostServerConfiguration,
+    )
+    random_player = RandomPlayer(
+        player_configuration=PlayerConfiguration("RandomPlayeGen8r", None),
+        battle_format="gen8randombattle",
         server_configuration=LocalhostServerConfiguration,
     )
 

@@ -8,6 +8,7 @@ from poke_env.utils import to_id_str
 
 from functools import lru_cache
 from typing import Dict
+from typing import List
 from typing import Optional
 from typing import Set
 from typing import Tuple
@@ -40,6 +41,8 @@ class Move:
         "beforeMoveCallback",
     ]
 
+    __slots__ = "_id", "_current_pp", "_is_empty"
+
     def __init__(self, move: str = "", move_id: Optional[str] = None):
         if move_id:
             self._id = move_id
@@ -55,13 +58,19 @@ class Move:
         self._current_pp -= 1
 
     @staticmethod
+    def is_id_z(id_) -> bool:
+        if id_.startswith("z") and id_[1:] in MOVES:
+            return True
+        return "isZ" in MOVES[id_]
+
+    @staticmethod
+    @lru_cache(4096)
     def should_be_stored(move_id: str) -> bool:
         if move_id in special_moves:
             return False
-        move = Move(move_id)
-        if move.is_z:
+        if move_id not in MOVES:
             return False
-        return True
+        return not Move.is_id_z(move_id)
 
     @property
     def accuracy(self) -> float:
@@ -104,7 +113,7 @@ class Move:
         :return: Wheter there exist a z-move version of this move.
         :rtype: bool
         """
-        return bool(self.z_move_boost or self.z_move_power or self.z_move_effect)
+        return self.id not in special_moves
 
     @property
     def category(self) -> MoveCategory:
@@ -160,7 +169,7 @@ class Move:
         :rtype: float
         """
         if "drain" in self.entry:
-            return self.entry["drain"]["0"] / self.entry["drain"]["1"]
+            return self.entry["drain"][0] / self.entry["drain"][1]
         return 0.0
 
     @property
@@ -207,7 +216,7 @@ class Move:
         :rtype: float
         """
         if "heal" in self.entry:
-            return self.entry["heal"]["0"] / self.entry["heal"]["1"]
+            return self.entry["heal"][0] / self.entry["heal"][1]
         return 0.0
 
     @property
@@ -254,7 +263,8 @@ class Move:
                 return self.entry["ignoreImmunity"]
             else:
                 return {
-                    PokemonType[t.upper()] for t in self.entry["ignoreImmunity"].keys()
+                    PokemonType[t.upper().replace("'", "")]
+                    for t in self.entry["ignoreImmunity"].keys()
                 }
         return False
 
@@ -272,9 +282,7 @@ class Move:
         :return: Whether the move is a z move.
         :rtype: bool
         """
-        if self.id.startswith("z") and self.id[1:] in MOVES:
-            return True
-        return "isZ" in self.entry
+        return Move.is_id_z(self.id)
 
     @property
     def max_pp(self) -> int:
@@ -285,17 +293,17 @@ class Move:
         return self.entry["pp"]
 
     @property
-    def n_hit(self) -> Tuple[int, int]:
+    def n_hit(self) -> Tuple:
         """
         :return: How many hits this move lands. Tuple of the form (min, max).
-        :rtype: Tuple[int, int]
+        :rtype: Tuple
         """
         if "multihit" in self.entry:
-            if isinstance(self.entry["multihit"], dict):
-                return (self.entry["multihit"]["0"], self.entry["multihit"]["1"])
+            if isinstance(self.entry["multihit"], list):
+                return tuple(self.entry["multihit"])
             else:
-                return (self.entry["multihit"], self.entry["multihit"])
-        return (1, 1)
+                return self.entry["multihit"], self.entry["multihit"]
+        return 1, 1
 
     @property
     def no_pp_boosts(self) -> bool:
@@ -336,7 +344,7 @@ class Move:
         :rtype: float
         """
         if "recoil" in self.entry:
-            return self.entry["recoil"]["0"] / self.entry["recoil"]["1"]
+            return self.entry["recoil"][0] / self.entry["recoil"][1]
         elif "struggleRecoil" in self.entry:
             return 0.25
         return 0.0
@@ -356,20 +364,22 @@ class Move:
             return "hiddenpower"
         if move_name.startswith("return"):
             return "return"
+        if move_name.startswith("frustration"):
+            return "frustration"
         return move_name
 
     @property
-    def secondary(self) -> Optional[dict]:
+    def secondary(self) -> List[dict]:
         """
         :return: Secondary effects. At this point, the precise content of this property
             is not too clear.
         :rtype: Optional[Dict]
         """
-        if "secondary" in self.entry:
-            return self.entry["secondary"]
-        if "secondaries" in self.entry:
+        if "secondary" in self.entry and self.entry["secondary"]:
+            return [self.entry["secondary"]]
+        elif "secondaries" in self.entry:
             return self.entry["secondaries"]
-        return None
+        return []
 
     @property
     def self_boost(self) -> Optional[Dict[str, int]]:
@@ -529,7 +539,32 @@ class Move:
         :return: Base power of the z-move version of this move.
         :rtype: int
         """
-        return self.entry.get("zMovePower", 0)
+        if "zMovePower" in self.entry:
+            return self.entry["zMovePower"]
+        elif self.category == MoveCategory.STATUS:
+            return 0
+        base_power = self.base_power
+        if self.n_hit != (1, 1):
+            base_power *= 3
+        elif base_power <= 55:
+            return 100
+        elif base_power <= 65:
+            return 120
+        elif base_power <= 75:
+            return 140
+        elif base_power <= 85:
+            return 160
+        elif base_power <= 95:
+            return 175
+        elif base_power <= 100:
+            return 180
+        elif base_power <= 110:
+            return 185
+        elif base_power <= 125:
+            return 190
+        elif base_power <= 130:
+            return 195
+        return 200
 
 
 class EmptyMove(Move):
