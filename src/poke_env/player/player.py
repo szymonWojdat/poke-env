@@ -2,6 +2,7 @@
 """This module defines a base class for players.
 """
 
+import asyncio
 import random
 
 from abc import ABC
@@ -29,6 +30,7 @@ from poke_env.server_configuration import LocalhostServerConfiguration
 from poke_env.server_configuration import ServerConfiguration
 from poke_env.teambuilder.teambuilder import Teambuilder
 from poke_env.teambuilder.constant_teambuilder import ConstantTeambuilder
+from poke_env.utils import to_id_str
 
 
 class Player(PlayerNetwork, ABC):
@@ -37,6 +39,10 @@ class Player(PlayerNetwork, ABC):
     """
 
     MESSAGES_TO_IGNORE = [""]
+
+    # When an error resulting from an invalid choice is made, the next order has this
+    # chance of being showdown's default order to prevent infinite loops
+    DEFAULT_CHOICE_CHANCE = 1 / 1000
 
     def __init__(
         self,
@@ -81,6 +87,7 @@ class Player(PlayerNetwork, ABC):
 
         if server_configuration is None:
             server_configuration = LocalhostServerConfiguration
+
         super(Player, self).__init__(
             player_configuration=player_configuration,
             avatar=avatar,
@@ -97,6 +104,7 @@ class Player(PlayerNetwork, ABC):
 
         self._battle_start_condition: Condition = Condition()
         self._battle_count_queue: Queue = Queue(max_concurrent_battles)
+        self._battle_end_condition: Condition = Condition()
         self._challenge_queue: Queue = Queue()
 
         if isinstance(team, Teambuilder):
@@ -197,16 +205,16 @@ class Player(PlayerNetwork, ABC):
             elif split_message[1] == "title":
                 player_1, player_2 = split_message[2].split(" vs. ")
                 battle.players = player_1, player_2
-            elif split_message[1] == "win":
-                battle._won_by(split_message[2])
+            elif split_message[1] == "win" or split_message[1] == "tie":
+                if split_message[1] == "win":
+                    battle._won_by(split_message[2])
+                else:
+                    battle._tied()
                 await self._battle_count_queue.get()
                 self._battle_count_queue.task_done()
                 self._battle_finished_callback(battle)
-            elif split_message[1] == "tie":
-                battle._tied()
-                await self._battle_count_queue.get()
-                self._battle_count_queue.task_done()
-                self._battle_finished_callback(battle)
+                async with self._battle_end_condition:
+                    self._battle_end_condition.notify_all()
             elif split_message[1] == "error":
                 if split_message[2].startswith(
                     "[Invalid choice] Sorry, too late to make a different move"
@@ -214,12 +222,18 @@ class Player(PlayerNetwork, ABC):
                     if battle.trapped:
                         await self._handle_battle_request(battle)
                 elif split_message[2].startswith(
-                    "[Unavailable choice] Can't switch: The active Pokémon is trapped"
+                    "[Unavailable choice] Can't switch: The active Pokémon is "
+                    "trapped"
                 ) or split_message[2].startswith(
                     "[Invalid choice] Can't switch: The active Pokémon is trapped"
                 ):
                     battle.trapped = True
                     await self._handle_battle_request(battle)
+                elif split_message[2].startswith(
+                    "[Invalid choice] Can't switch: You can't switch to an active "
+                    "Pokémon"
+                ):
+                    await self._handle_battle_request(battle, maybe_default_order=True)
                 elif split_message[2].startswith("[Invalid choice]"):
                     self._manage_error_in(battle)
                 elif split_message[2].startswith(
@@ -243,9 +257,14 @@ class Player(PlayerNetwork, ABC):
                     self.logger.exception(e)
 
     async def _handle_battle_request(
-        self, battle: Battle, from_teampreview_request: bool = False
+        self,
+        battle: Battle,
+        from_teampreview_request: bool = False,
+        maybe_default_order=False,
     ):
-        if battle.teampreview:
+        if maybe_default_order and random.random() < self.DEFAULT_CHOICE_CHANCE:
+            message = self.choose_default_move(battle)
+        elif battle.teampreview:
             if not from_teampreview_request:
                 return
             message = self.teampreview(battle)
@@ -321,6 +340,14 @@ class Player(PlayerNetwork, ABC):
         """
         pass
 
+    def choose_default_move(self, *args, **kwargs) -> str:
+        """Returns showdown's default move order.
+
+        This order will result in the first legal order - according to showdown's
+        ordering - being chosen.
+        """
+        return "/choose default"
+
     def choose_random_move(self, battle: Battle) -> str:
         """Returns a random legal move from battle.
 
@@ -353,6 +380,49 @@ class Player(PlayerNetwork, ABC):
             order = "/choose default"
         return order
 
+    async def ladder(self, n_games):
+        """Make the player play games on the ladder.
+
+        n_games defines how many battles will be played.
+
+        :param n_games: Number of battles that will be played
+        :type n_games: int
+        """
+        await self._logged_in.wait()
+        start_time = perf_counter()
+
+        for _ in range(n_games):
+            async with self._battle_start_condition:
+                await self._search_ladder_game(self._format)
+                await self._battle_start_condition.wait()
+                while self._battle_count_queue.full():
+                    async with self._battle_end_condition:
+                        await self._battle_end_condition.wait()
+                await self._battle_semaphore.acquire()
+        await self._battle_count_queue.join()
+        self.logger.info(
+            "Laddering (%d battles) finished in %fs",
+            n_games,
+            perf_counter() - start_time,
+        )
+
+    async def battle_against(self, opponent: "Player", n_battles: int) -> None:
+        """Make the player play n_battles against opponent.
+
+        This function is a wrapper around send_challenges and accept challenges.
+
+        :param opponent: The opponent to play against.
+        :type opponent: Player
+        :param n_battles: The number of games to play.
+        :type n_battles: int
+        """
+        await asyncio.gather(
+            self.send_challenges(
+                to_id_str(opponent.username), n_battles, to_wait=opponent.logged_in
+            ),
+            opponent.accept_challenges(to_id_str(self.username), n_battles),
+        )
+
     async def send_challenges(
         self, opponent: str, n_challenges: int, to_wait: Optional[Event] = None
     ) -> None:
@@ -373,7 +443,7 @@ class Player(PlayerNetwork, ABC):
         :type to_wait: Event, optional.
         """
         await self._logged_in.wait()
-        self.logger.info("Event logged in received in challenge")
+        self.logger.info("Event logged in received in send challenge")
 
         if to_wait is not None:
             await to_wait.wait()
@@ -463,6 +533,10 @@ class Player(PlayerNetwork, ABC):
     @property
     def battles(self) -> Dict[str, Battle]:
         return self._battles
+
+    @property
+    def format(self) -> str:
+        return self._format
 
     @property
     def n_finished_battles(self) -> int:

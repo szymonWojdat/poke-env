@@ -20,7 +20,7 @@ URL = "https://github.com/hsahovic/poke-env"
 EMAIL = "contact@sahovic.fr"
 AUTHOR = "Haris Sahovic"
 REQUIRES_PYTHON = ">=3.6.0"
-VERSION = "0.3.2"
+VERSION = "0.3.4"
 
 # What packages are required for this module to be executed?
 with open("requirements.txt") as requirements:
@@ -124,6 +124,7 @@ setup(
         "Programming Language :: Python",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3 :: Only",
         "Topic :: Games/Entertainment :: Simulation",
         "Topic :: Games/Entertainment :: Turn Based Strategy",

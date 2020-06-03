@@ -37,7 +37,7 @@ def test_random_gym_player_gen7():
     env_player.play_against(
         env_algorithm=play_function,
         opponent=random_player,
-        env_algorithm_kwargs={"n_battles": 10},
+        env_algorithm_kwargs={"n_battles": 5},
     )
 
 
@@ -49,7 +49,7 @@ def test_random_gym_player_gen8():
         server_configuration=LocalhostServerConfiguration,
     )
     random_player = RandomPlayer(
-        player_configuration=PlayerConfiguration("RandomPlayeGen8r", None),
+        player_configuration=PlayerConfiguration("RandomPlayerGen8", None),
         battle_format="gen8randombattle",
         server_configuration=LocalhostServerConfiguration,
     )
@@ -57,5 +57,5 @@ def test_random_gym_player_gen8():
     env_player.play_against(
         env_algorithm=play_function,
         opponent=random_player,
-        env_algorithm_kwargs={"n_battles": 10},
+        env_algorithm_kwargs={"n_battles": 5},
     )

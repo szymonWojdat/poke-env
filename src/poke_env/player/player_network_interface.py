@@ -200,6 +200,10 @@ class PlayerNetwork(ABC):
 
         await self._change_avatar(self._avatar)
 
+    async def _search_ladder_game(self, format_):
+        await self._set_team()
+        await self._send_message(f"/search {format_}")
+
     async def _send_message(
         self, message: str, room: str = "", message_2: Optional[str] = None
     ) -> None:
@@ -253,6 +257,8 @@ class PlayerNetwork(ABC):
             )
         except (CancelledError, RuntimeError) as e:
             self.logger.critical("Listen interrupted by %s", e)
+        except Exception as e:
+            self.logger.exception(e)
         finally:
             for coroutine in coroutines:
                 coroutine.cancel()
