@@ -431,7 +431,6 @@ class Gen7EnvSinglePlayer(EnvPlayer):  # pyre-ignore
         """
         return self._ACTION_SPACE
 
-<<<<<<< HEAD
     def legal_action_mask(self, battle : Battle) -> List:
         legal_actions = [0] * 18
         if not battle.force_switch:
@@ -446,7 +445,6 @@ class Gen7EnvSinglePlayer(EnvPlayer):  # pyre-ignore
         for i in range(12, 12 + len(battle.available_switches)):
             legal_actions[i] += 1
         return legal_actions
-=======
 
 class Gen8EnvSinglePlayer(EnvPlayer):  # pyre-ignore
     _ACTION_SPACE = list(range(4 * 4 + 6))
@@ -535,4 +533,3 @@ class Gen8EnvSinglePlayer(EnvPlayer):  # pyre-ignore
                 executed.
         """
         return self._ACTION_SPACE
->>>>>>> 5435b1b1a3da314fc46aebdf21287f94abc916df
