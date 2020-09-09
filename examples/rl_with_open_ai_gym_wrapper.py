@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import tensorflow as tf
+from poke_env.data import MOVES
+
 print(tf.__version__)
 from poke_env.player_configuration import PlayerConfiguration
 from poke_env.player.env_player import Gen7EnvSinglePlayer
@@ -15,7 +17,7 @@ from poke_env.dqn2 import DQNAgent
 from rl.policy import LinearAnnealedPolicy
 from poke_env.policy2 import EpsGreedyQPolicy
 from rl.memory import SequentialMemory
-from tensorflow.keras.layers import Dense, Flatten
+from tensorflow.keras.layers import Dense, Flatten, Embedding
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.optimizers import Adam
 
@@ -82,37 +84,10 @@ class EmbeddedRLPlayer(Player):
 
 class AdvancedRLPlayer(Gen7EnvSinglePlayer):
 	def embed_battle(self, battle):
-		move_embedding = tf.keras.layers.Embedding(input_dim,output_dim)
-		# -1 indicates that the move does not have a base power
-		# or is not available
-		moves_base_power = -np.ones(4)
-		moves_dmg_multiplier = np.ones(4)
+		moves = np.zeros(4)
 		for i, move in enumerate(battle.available_moves):
-			moves_base_power[i] = (
-				move.base_power / 100
-			)  # Simple rescaling to facilitate learning
-			if move.type:
-				moves_dmg_multiplier[i] = move.type.damage_multiplier(
-					battle.opponent_active_pokemon.type_1,
-					battle.opponent_active_pokemon.type_2,
-				)
-
-		# We count how many pokemons have not fainted in each team
-		remaining_mon_team = (
-			len([mon for mon in battle.team.values() if mon.fainted]) / 6
-		)
-		remaining_mon_opponent = (
-			len([mon for mon in battle.opponent_team.values() if mon.fainted]) / 6
-		)
-
-		# Final vector with 10 components
-		return np.concatenate(
-			[
-				moves_base_power,
-				moves_dmg_multiplier,
-				[remaining_mon_team, remaining_mon_opponent],
-			]
-		)
+			moves[i] = MOVES[move._id]["num"]
+		return moves
 
 	def compute_reward(self, battle) -> float:
 		return self.reward_computing_helper(
@@ -205,6 +180,76 @@ def build_dqn(input_shape=10, name=""):
 	# Our embedding have shape (1, 10), which affects our hidden layer
 	# dimension and output dimension
 	# Flattening resolve potential issues that would arise otherwise
+	#model.add(Flatten())
+	model.add(Dense(64, activation="elu"))
+	model.add(Dense(n_action, activation="linear"))
+
+	memory = SequentialMemory(limit=10000, window_length=1)
+
+	if name == "old":
+		# Simple epsilon greedy
+		policy = LinearAnnealedPolicy(
+			EPSGREEDY_default(),
+			attr="eps",
+			value_max=1.0,
+			value_min=0.05,
+			value_test=0,
+			nb_steps=10000,
+		)
+
+		# Defining our DQN
+		dqn = DQN_default(
+			model=model,
+			nb_actions=18,
+			policy=policy,
+			memory=memory,
+			nb_steps_warmup=1000,
+			gamma=0.5,
+			target_model_update=1,
+			delta_clip=0.01,
+			enable_double_dqn=True,
+		)
+	else:
+		# Simple epsilon greedy
+		policy = LinearAnnealedPolicy(
+			EpsGreedyQPolicy(),
+			attr="eps",
+			value_max=1.0,
+			value_min=0.05,
+			value_test=0,
+			nb_steps=10000,
+		)
+
+		# Defining our DQN
+		dqn = DQNAgent(
+			model=model,
+			nb_actions=18,
+			policy=policy,
+			memory=memory,
+			nb_steps_warmup=1000,
+			gamma=0.5,
+			target_model_update=1,
+			delta_clip=0.01,
+			enable_double_dqn=True,
+		)
+
+	dqn.compile(Adam(lr=0.00025), metrics=["mae"])
+	return dqn
+
+
+def build_advanced_dqn(input_shape=4, name=""):
+	# Output dimension
+	move_emb_dim = 32
+	n_action = len(env_player.action_space)
+
+	model = Sequential()
+	model.add(Embedding(796, move_emb_dim, 4)) #MOVE EMBEDDING
+	model.add(Flatten())
+	model.add(Dense(128, activation="elu", input_shape=(1, move_emb_dim * 4)))
+
+	# Our embedding have shape (1, 10), which affects our hidden layer
+	# dimension and output dimension
+	# Flattening resolve potential issues that would arise otherwise
 	model.add(Flatten())
 	model.add(Dense(64, activation="elu"))
 	model.add(Dense(n_action, activation="linear"))
@@ -263,12 +308,21 @@ def build_dqn(input_shape=10, name=""):
 
 
 if __name__ == "__main__":
-	env_player = SimpleRLPlayer(
-		player_configuration=PlayerConfiguration("BasicSwitch", None),
-		battle_format="gen7randombattle",
-		server_configuration=LocalhostServerConfiguration,
-	)
-
+	advanced = False
+	if advanced == True:
+		env_player = AdvancedRLPlayer(
+			player_configuration=PlayerConfiguration("AdvancedRLPlayer", None),
+			battle_format="gen7randombattle",
+			server_configuration=LocalhostServerConfiguration,
+		)
+		dqn = build_dqn(input_shape=4)
+	else:
+		env_player = SimpleRLPlayer(
+			player_configuration=PlayerConfiguration("BasicSwitch", None),
+			battle_format="gen7randombattle",
+			server_configuration=LocalhostServerConfiguration,
+		)
+		dqn = build_dqn(input_shape=10)
 	opponent = RandomPlayer(
 		player_configuration=PlayerConfiguration("Random player", None),
 		battle_format="gen7randombattle",
@@ -289,8 +343,6 @@ if __name__ == "__main__":
 	)
 
 
-
-	dqn = build_dqn(input_shape=10)
 	# Training
 	env_player.play_against(
 		env_algorithm=dqn_training,

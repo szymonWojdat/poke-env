@@ -11,6 +11,29 @@ from typing import Dict
 from poke_env.utils import _compute_type_chart
 
 
+STR_TO_ID = {}
+for name, filename in [
+						("abilities", "abilities.json"),
+						("items", "items.json"),
+						("moves", "moves.json"),
+						("natures", "natures.json"),
+						("species", "species.json"),
+						("types", "types.json")
+					  ]:
+	filepath = os.path.join(
+	    os.path.dirname(os.path.realpath(__file__)), "data/ids/gen7", filename
+	)
+	with open(filepath) as fp:
+		STR_TO_ID[name] = json.load(fp)
+
+GEN7_ABILITIES: str = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)), "data", "typeChart.json"
+)
+
+
+
+
+
 _TYPE_CHART_PATH: str = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), "data", "typeChart.json"
 )
@@ -34,6 +57,22 @@ POKEDEX.update(_missing_dex)
 _equivalent_forms = {"darmanitangalarzen": "darmanitanzengalar"}
 
 POKEDEX.update({k: POKEDEX[v] for k, v in _equivalent_forms.items()})
+
+ABILITYDEX: Dict = {}
+
+with open(
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "abilities.json")
+) as abilities:
+    ABILITYDEX = json.load(abilities)
+
+ITEMS: Dict = {}
+
+with open(
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "items.json")
+) as items:
+    ITEMS = json.load(items)
+
+
 
 MOVES: Dict = {}
 
