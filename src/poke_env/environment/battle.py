@@ -8,7 +8,7 @@ from typing import Tuple
 
 from poke_env.environment.field import Field
 from poke_env.environment.move import Move
-from poke_env.environment.move import special_moves
+from poke_env.environment.move import SPECIAL_MOVES
 from poke_env.environment.pokemon import Pokemon
 from poke_env.environment.side_condition import SideCondition
 from poke_env.environment.weather import Weather
@@ -116,7 +116,7 @@ class Battle:
         self._team_size: Dict[str, int] = {}
         self._teampreview: bool = False
         self._teampreview_opponent_team: Set[Pokemon] = set()
-        self.logger: Logger = logger  # pyre-ignore
+        self.logger: Logger = logger
 
         # Turn choice attributes
         self._available_moves: List[Move] = []
@@ -340,7 +340,7 @@ class Battle:
             self.get_pokemon(pokemon).status = status
         elif split_message[1] == "-swapboost":
             source, target, stats = split_message[2:5]
-            self.get_pokemon(target)._swap_boosts
+            self.get_pokemon(target)._swap_boosts()
         elif split_message[1] == "-transform":
             pokemon, into = split_message[2:4]
             self.get_pokemon(pokemon)._transform(self.get_pokemon(into))
@@ -466,8 +466,8 @@ class Battle:
                 if not move.get("disabled", False):
                     if move["id"] in active_pokemon.moves:
                         self._available_moves.append(active_pokemon.moves[move["id"]])
-                    elif move["id"] in special_moves:
-                        self._available_moves.append(special_moves[move["id"]])
+                    elif move["id"] in SPECIAL_MOVES:
+                        self._available_moves.append(SPECIAL_MOVES[move["id"]])
                     else:
                         try:
                             if not {
