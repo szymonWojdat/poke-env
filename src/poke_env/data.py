@@ -84,7 +84,6 @@ _equivalent_forms = {"darmanitangalarzen": "darmanitanzengalar"}
 
 POKEDEX.update({k: POKEDEX[v] for k, v in _equivalent_forms.items()})
 
-<<<<<<< HEAD
 ABILITYDEX: Dict = {}
 
 with open(
@@ -102,9 +101,6 @@ with open(
 
 
 MOVES: Dict = {}
-=======
-MOVES: Dict[str, Any] = {}
->>>>>>> f16d70e8b80e2c880170730d9b6ef9c61c2b6bf2
 
 with open(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "moves.json")
