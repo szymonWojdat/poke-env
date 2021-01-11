@@ -121,6 +121,25 @@ with open(
 
 
 
+<<<<<<< HEAD
+=======
+ABILITYDEX: Dict = {}
+
+with open(
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "abilities.json")
+) as abilities:
+    ABILITYDEX = json.load(abilities)
+
+ITEMS: Dict = {}
+
+with open(
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "items.json")
+) as items:
+    ITEMS = json.load(items)
+
+
+
+>>>>>>> a1b7429cbad53012ed07b8a1750a2941dc64c4a9
 MOVES: Dict = {}
 
 with open(
